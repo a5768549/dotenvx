@@ -1,0 +1,51 @@
+name: Isolated contribution validation
+on:
+  push:
+    branches: [verify/oss-20261027]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    name: baseline / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
+    env:
+      CI: true
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: 509745dae480cec27aca18a2184942c81bd61d9d
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Record source and runtime
+        run: |
+          git rev-parse HEAD
+          node --version
+          npm --version
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Full test suite
+        run: npm test
+      - name: Standard lint
+        if: always()
+        run: npm run standard
+      - name: Install upstream-pinned shellspec
+        if: always()
+        run: |
+          curl --fail --location --max-time 60 https://raw.githubusercontent.com/shellspec/shellspec/b8935ec266d2c5f7f364c6024730e4d68432cce3/install.sh -o "$RUNNER_TEMP/install-shellspec.sh"
+          sh "$RUNNER_TEMP/install-shellspec.sh" 0.28.1 --yes --prefix "$RUNNER_TEMP/shellspec"
+          echo "$RUNNER_TEMP/shellspec/bin" >> "$GITHUB_PATH"
+      - name: Shell suite
+        if: always()
+        run: npm run testshell
+      - name: Verify tracked source unchanged
+        if: always()
+        run: git diff --exit-code
